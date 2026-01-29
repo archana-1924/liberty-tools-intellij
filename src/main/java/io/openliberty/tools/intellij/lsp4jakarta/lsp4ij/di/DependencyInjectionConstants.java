@@ -42,4 +42,8 @@ public class DependencyInjectionConstants {
             "jakarta.enterprise.inject.Default",
             "jakarta.enterprise.inject.Any",
             "jakarta.inject.Named");
+
+    public static final Set<String> IMPLICIT_QUALIFIERS = Set.of(
+            "jakarta.enterprise.inject.Default",
+            "jakarta.enterprise.inject.Any");
 }

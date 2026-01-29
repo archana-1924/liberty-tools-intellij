@@ -17,13 +17,12 @@ package io.openliberty.tools.intellij.lsp4jakarta.lsp4ij.di;
 import com.intellij.psi.*;
 import io.openliberty.tools.intellij.lsp4jakarta.lsp4ij.AbstractDiagnosticsCollector;
 import io.openliberty.tools.intellij.lsp4jakarta.lsp4ij.Messages;
+import io.openliberty.tools.intellij.lsp4jakarta.lsp4ij.jsonb.JsonbConstants;
 import org.eclipse.lsp4j.Diagnostic;
 import org.eclipse.lsp4j.DiagnosticSeverity;
 import static io.openliberty.tools.intellij.lsp4jakarta.lsp4ij.di.DependencyInjectionConstants.*;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Objects;
+
+import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -58,6 +57,8 @@ public class DependencyInjectionDiagnosticsCollector extends AbstractDiagnostics
             return;
 
         PsiClass[] alltypes;
+        boolean isInject = false;
+        Set<String> fqNames = new HashSet<>();
         alltypes = unit.getClasses();
         for (PsiClass type : alltypes) {
             PsiField[] allFields = type.getFields();
@@ -76,9 +77,23 @@ public class DependencyInjectionDiagnosticsCollector extends AbstractDiagnostics
                                 DIAGNOSTIC_CODE_INJECT_INNER_CLASS, field.getType().getInternalCanonicalText(),
                                 DiagnosticSeverity.Error));
                     }
+                }
+                for(PsiAnnotation annotation: field.getAnnotations()){
+                    if(isMatchedJavaElement(type, annotation.getQualifiedName(), INJECT_FQ_NAME)){
+                        isInject = true;
+                    }else{
+                        String matchedAnn = getMatchedJavaElementName(type, annotation.getQualifiedName(), IMPLICIT_QUALIFIERS.toArray(String[]::new));
+                        if(matchedAnn!=null){
+                            fqNames.add(matchedAnn);
+                        }
+                    }
+                }
+                if (fqNames.equals(IMPLICIT_QUALIFIERS)) {
+                    continue;
+                }else {
                     //Finding and generating invalid inject qualifier diagnostics for fields in parent class
                     List<PsiAnnotation> qualifiers = getQualifiers(field.getAnnotations(), unit, type);
-                    if (qualifiers.size() > 1 && !isCdiScoped) {
+                    if (isInject && qualifiers.size() > 1 && !isCdiScoped) {
                         createInvalidInjectQualifierFieldDiagnostics(unit, diagnostics, field);
                     }
                 }
@@ -127,10 +142,17 @@ public class DependencyInjectionDiagnosticsCollector extends AbstractDiagnostics
                                     DIAGNOSTIC_CODE_INJECT_INNER_CLASS, method.getReturnType().getInternalCanonicalText(),
                                     DiagnosticSeverity.Error));
                         }
-                        //Finding and generating invalid inject qualifier diagnostics for method parameters in parent class
-                        List<PsiAnnotation> qualifiers = getQualifiers(param.getAnnotations(), unit, type);
-                        if (qualifiers.size() > 1 && !isCdiScoped) {
-                            createInvalidInjectQualifierMethodDiagnostics(unit, diagnostics, method);
+                        if(new HashSet<>(getMatchedJavaElementNames(type, Arrays.stream(param.getAnnotations())
+                                .map(PsiAnnotation::getQualifiedName)
+                                .filter(Objects::nonNull)
+                                .collect(Collectors.toSet()).toArray(String[]::new), IMPLICIT_QUALIFIERS.toArray(String[]::new))).equals(IMPLICIT_QUALIFIERS)){
+                            continue;
+                        }else {
+                            //Finding and generating invalid inject qualifier diagnostics for method parameters in parent class
+                            List<PsiAnnotation> qualifiers = getQualifiers(param.getAnnotations(), unit, type);
+                            if (qualifiers.size() > 1 && !isCdiScoped) {
+                                createInvalidInjectQualifierMethodDiagnostics(unit, diagnostics, method);
+                            }
                         }
                     }
                 }
@@ -147,19 +169,41 @@ public class DependencyInjectionDiagnosticsCollector extends AbstractDiagnostics
             //Checking if inner classes have more than one qualifier in fields or method params
             for(PsiClass innerClass: type.getInnerClasses()){
                 for(PsiField innerField: innerClass.getFields()){
-                    if (containsAnnotation(type, innerField.getAnnotations(), INJECT_FQ_NAME)) {
-                        List<PsiAnnotation> qualifiers = getQualifiers(innerField.getAnnotations(), unit, type);
-                        if (qualifiers.size() > 1 && !isCdiScoped) {
-                            createInvalidInjectQualifierFieldDiagnostics(unit, diagnostics, innerField);
+                    boolean isInjectInner = false;
+                    Set<String> fqNamesInner = new HashSet<>();
+                    for(PsiAnnotation annotation: innerField.getAnnotations()) {
+                        if(isMatchedJavaElement(type, annotation.getQualifiedName(), INJECT_FQ_NAME)){
+                            isInjectInner = true;
+                            }else{
+                                String matchedAnn = getMatchedJavaElementName(type, annotation.getQualifiedName(), IMPLICIT_QUALIFIERS.toArray(String[]::new));
+                                if(matchedAnn!=null){
+                                    fqNamesInner.add(matchedAnn);
+                                }
+                            }
+                        }
+                        if (fqNamesInner.equals(IMPLICIT_QUALIFIERS)) {
+                            continue;
+                        }
+                        else {
+                            List<PsiAnnotation> qualifiers = getQualifiers(innerField.getAnnotations(), unit, type);
+                            if (isInjectInner && qualifiers.size() > 1 && !isCdiScoped) {
+                                createInvalidInjectQualifierFieldDiagnostics(unit, diagnostics, innerField);
+                            }
                         }
                     }
-                }
                 for(PsiMethod innerMethod: innerClass.getMethods()){
                     if (containsAnnotation(type, innerMethod.getAnnotations(), INJECT_FQ_NAME)) {
                         for (PsiParameter param : innerMethod.getParameterList().getParameters()) {
-                            List<PsiAnnotation> qualifiers = getQualifiers(innerMethod.getAnnotations(), unit, type);
-                            if (qualifiers.size() > 1 && !isCdiScoped) {
-                                createInvalidInjectQualifierMethodDiagnostics(unit, diagnostics, innerMethod);
+                            if(new HashSet<>(getMatchedJavaElementNames(type, Arrays.stream(param.getAnnotations())
+                                    .map(PsiAnnotation::getQualifiedName)
+                                    .filter(Objects::nonNull)
+                                    .collect(Collectors.toSet()).toArray(String[]::new), IMPLICIT_QUALIFIERS.toArray(String[]::new))).equals(IMPLICIT_QUALIFIERS)){
+                                continue;
+                            }else {
+                                List<PsiAnnotation> qualifiers = getQualifiers(innerMethod.getAnnotations(), unit, type);
+                                if (qualifiers.size() > 1 && !isCdiScoped) {
+                                    createInvalidInjectQualifierMethodDiagnostics(unit, diagnostics, innerMethod);
+                                }
                             }
                         }
                     }
@@ -198,7 +242,7 @@ public class DependencyInjectionDiagnosticsCollector extends AbstractDiagnostics
                     DIAGNOSTIC_CODE_INJECT_INVALID_QUALIFIER, method.getReturnType().getInternalCanonicalText(),
                     DiagnosticSeverity.Error));
     }
-
+    
     /**
      * getQualifiers
      * @description Method to check if annotations are qualifier annotations or not

@@ -17,7 +17,6 @@ import java.util.List;
 import java.util.stream.Collectors;
 import java.util.Collection;
 import com.intellij.psi.*;
-import com.intellij.psi.util.PsiTreeUtil;
 import io.openliberty.tools.intellij.lsp4jakarta.lsp4ij.AbstractDiagnosticsCollector;
 import io.openliberty.tools.intellij.lsp4jakarta.lsp4ij.PositionUtils;
 import org.eclipse.lsp4j.Diagnostic;
@@ -25,6 +24,7 @@ import org.eclipse.lsp4j.DiagnosticSeverity;
 import io.openliberty.tools.intellij.lsp4jakarta.lsp4ij.Messages;
 import org.eclipse.lsp4j.Range;
 import io.openliberty.tools.intellij.lsp4jakarta.lsp4ij.helpers.ConstructorInfoDiagnosticHelper;
+import io.openliberty.tools.intellij.lsp4jakarta.lsp4ij.ASTUtils;
 import static io.openliberty.tools.intellij.lsp4jakarta.lsp4ij.interceptor.Constants.*;
 
 
@@ -59,7 +59,7 @@ public class InterceptorDiagnosticsParticipant extends AbstractDiagnosticsCollec
 				buildAbstractAndNoArgsConstructorDiagnostics(unit, diagnostics, innerClass);
 			}
      }
-		Collection<PsiMethod> allMethodDeclarations =  PsiTreeUtil.findChildrenOfType(unit, PsiMethod.class);
+		Collection<PsiMethod> allMethodDeclarations = ASTUtils.getAllMethodDeclarations(unit);
 		List<PsiMethod> createProceedInvocationDeclarations = allMethodDeclarations.stream().filter(m -> missingInterceptorMethodProceedInvocation(m, unit)).collect(Collectors.toList());
 		for(PsiMethod invokeMethod: createProceedInvocationDeclarations){
 			Range range = PositionUtils.toNameRange(invokeMethod);

@@ -249,26 +249,26 @@ public abstract class AbstractDiagnosticsCollector implements DiagnosticsCollect
 
     /**
      * isImportReferencedJavaElement
-     * Method checks if class has references of interceptor type imports
+     * Method checks if class has references of passed type imports
      *
      * @param javaFile
-     * @param interceptorImport
+     * @param importRef
      * @return
      */
-    private static boolean isImportReferencedJavaElement(PsiJavaFile javaFile, String interceptorImport) {
+    private static boolean isImportReferencedJavaElement(PsiJavaFile javaFile, String importRef) {
         PsiImportList importList = javaFile.getImportList();
         if (importList != null) {
             for (PsiImportStatement importStatement : importList.getImportStatements()) {
                 PsiElement resolved = importStatement.resolve();
                 if (resolved instanceof PsiClass psiClass) {
                     String qualifiedName = psiClass.getQualifiedName();
-                    if (qualifiedName != null && qualifiedName.contains(interceptorImport)) {
+                    if (qualifiedName != null && qualifiedName.contains(importRef)) {
                        return true;
                     }
                 }
                 else if (resolved instanceof PsiPackage psiPackage) {
                     String pkgName = psiPackage.getQualifiedName();
-                    if (pkgName.contains(interceptorImport)) {
+                    if (pkgName.contains(importRef)) {
                        return true;
                     }
                 }

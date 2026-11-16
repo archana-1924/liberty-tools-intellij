@@ -124,14 +124,23 @@ public class InterceptorDiagnosticsParticipant extends AbstractDiagnosticsCollec
 			// @AroundConstruct is only valid in classes declared with @Interceptor (and their superclasses).
 			// A class with @AroundInvoke or @AroundTimeout but no @Interceptor is still a target class
 			// for this check — only @Interceptor annotation exempts @AroundConstruct usage.
+			// Lifecycle callback methods in a target class must have the signature void <METHOD>().
 			if (!isInterceptorType(type)) {
 				checkAroundConstructInTargetClass(type, unit, diagnostics);
+				checkLifecycleCallbackMethodSignatureInTargetClass(type, unit, diagnostics);
+			}
+			// Apply the same target-class checks to inner classes.
+			for (PsiClass innerClass : type.getInnerClasses()) {
+				if (!isInterceptorType(innerClass)) {
+					checkAroundConstructInTargetClass(innerClass, unit, diagnostics);
+					checkLifecycleCallbackMethodSignatureInTargetClass(innerClass, unit, diagnostics);
+				}
 			}
 
 			// When a non-interceptor type is a superclass of an @Interceptor class in a
 			// different file, its lifecycle callback methods must still satisfy the spec
 			// signature constraint (Jakarta Interceptors 2.0).
-			if (!isInterceptorType && hasInterceptorSubclass(type, unit)) {
+			if (!isInterceptorType && hasInterceptorSubclass(type)) {
 				for (PsiMethod method : type.getMethods()) {
 					validateLifecycleCallbackMethodSignature(type, method, unit, diagnostics);
 				}
@@ -439,7 +448,7 @@ public class InterceptorDiagnosticsParticipant extends AbstractDiagnosticsCollec
 												   List<Diagnostic> diagnostics) {
 		// Evaluate once for the type — ClassInheritorsSearch is expensive and the
 		// result is constant across all methods of the same type.
-		if (hasInterceptorSubclass(type, unit)) {
+		if (hasInterceptorSubclass(type)) {
 			// Spec allows @AroundConstruct in interceptor superclasses; nothing to flag.
 			return;
 		}
@@ -495,6 +504,43 @@ public class InterceptorDiagnosticsParticipant extends AbstractDiagnosticsCollec
 			Diagnostic diagnostic = new Diagnostic(range, Messages.getMessage("InvalidLifecycleCallbackInterceptorMethodSignature"));
 			completeDiagnostic(diagnostic, DIAGNOSTIC_CODE_INVALID_LIFECYCLE_CALLBACK_SIGNATURE, DiagnosticSeverity.Error);
 			diagnostics.add(diagnostic);
+		}
+	}
+
+	/**
+	 * Checks if a non-interceptor class (target class) or one of its superclasses
+	 * declares a lifecycle callback interceptor method (@PostConstruct, @PreDestroy,
+	 * @AroundConstruct) that does not have the required signature {@code void <METHOD>()}.
+	 *
+	 * <p>According to the Jakarta Interceptors 2.0 specification, lifecycle callback
+	 * interceptor methods declared in a target class or in a superclass of a target class
+	 * must have the following signature: {@code void <METHOD>()}. That is, the method
+	 * must return void and must declare no parameters.</p>
+	 *
+	 * @param type        the type to check
+	 * @param unit        the compilation unit
+	 * @param diagnostics the list to add diagnostics to
+	 */
+	private void checkLifecycleCallbackMethodSignatureInTargetClass(PsiClass type, PsiJavaFile unit, List<Diagnostic> diagnostics) {
+		// Suppress target class signature check if an @Interceptor subclass exists
+		if (hasInterceptorSubclass(type)) {
+			return;
+		}
+		for (PsiMethod method : type.getMethods()) {
+			List<String> lifecycleAnnotations = containsAnyMatchingAnnotations(type, method, LIFECYCLE_CALLBACK_INTERCEPTOR_METHODS);
+			if (lifecycleAnnotations.isEmpty()) {
+				continue;
+			}
+			// Violation: method has parameters or non-void return type
+			boolean hasParams = method.getParameterList().getParametersCount() > 0;
+			boolean isNonVoid = !PsiTypes.voidType().equals(method.getReturnType());
+			if (hasParams || isNonVoid) {
+				Range range = PositionUtils.toNameRange(method);
+				String msg = Messages.getMessage("InvalidLifecycleCallbackMethodSignatureInTargetClass");
+				Diagnostic diagnostic = new Diagnostic(range, msg);
+				completeDiagnostic(diagnostic, DIAGNOSTIC_CODE_LIFECYCLE_CALLBACK_SIGNATURE, DiagnosticSeverity.Error);
+				diagnostics.add(diagnostic);
+			}
 		}
 	}
 }
